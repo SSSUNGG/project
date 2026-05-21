@@ -1,0 +1,91 @@
+env:
+  id: PegInsertionSide-v1
+  obs_mode: rgb+depth+segmentation
+  control_mode: pd_ee_delta_pose
+  robot: panda
+  max_episode_steps: 100
+  horizon_H: 10
+  randomization:
+    strength: medium
+    object_pose_xy_std: 0.04
+    object_pose_yaw_std: 0.3
+    lighting_jitter: 0.3
+    distractor_count: 0
+    camera_pose_jitter: 0.02
+  reward_mode: sparse
+  render_mode: null
+policy:
+  name: octo
+  hf_id: rail-berkeley/octo-base
+  action_space: ee_delta_pose_7d
+  freeze_backbone: true
+  lora:
+    enabled: false
+  quantization:
+    enabled: false
+    bits: 8
+  hidden_state:
+    layer: -1
+    pooling: mean
+    cache: true
+detector:
+  name: mlp_hybrid
+  input:
+    use_vla_hidden: true
+    vla_hidden_dim: 4096
+    vla_proj_dim: 256
+    use_action_history: true
+    action_history_K: 8
+    action_dim: 7
+    use_proprio: true
+    proprio_dim: 8
+  model:
+    hidden_dim: 256
+    num_layers: 3
+    dropout: 0.1
+    norm: layernorm
+    activation: gelu
+  train:
+    optimizer: adamw
+    lr: 0.0003
+    weight_decay: 0.01
+    batch_size: 256
+    epochs: 30
+    early_stopping_patience: 5
+    loss: weighted_bce
+    pos_weight: 4.0
+    grad_clip: 1.0
+  calibration:
+    method: temperature_scaling
+    val_split_for_calib: 0.5
+reasoner:
+  name: rule_based
+  re_grasp_z_threshold: 0.05
+  re_approach_progress_threshold: 0.01
+  request_help_risk_threshold: 0.85
+experiment:
+  name: phase1_baseline
+  tasks:
+  - peg_insertion
+  - assembling_kits
+  - pick_single_ycb
+  - pick_cube
+  - stack_cube
+  eval:
+    n_seeds: 5
+    n_episodes_per_seed: 100
+    bootstrap_n: 1000
+    confidence_level: 0.95
+  logging:
+    per_episode: true
+project_root: /content/drive/MyDrive/vla-risk-wrapper
+seed: 42
+device: cuda
+logging:
+  level: INFO
+  console: true
+  file: true
+  drive_sync_every_n_episodes: 5
+hardware:
+  precision: bf16
+  use_8bit: false

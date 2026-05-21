@@ -1,0 +1,35 @@
+name: mlp_proprio_only
+
+input:
+  use_vla_hidden: false
+  vla_hidden_dim: 4096
+  vla_proj_dim: 256
+
+  use_action_history: false
+  action_history_K: 8
+  action_dim: 7
+
+  use_proprio: true
+  proprio_dim: 8
+
+model:
+  hidden_dim: 256
+  num_layers: 3
+  dropout: 0.1
+  norm: layernorm
+  activation: gelu
+
+train:
+  optimizer: adamw
+  lr: 3.0e-4
+  weight_decay: 1.0e-2
+  batch_size: 256
+  epochs: 30
+  early_stopping_patience: 5
+  loss: weighted_bce
+  pos_weight: 4.0
+  grad_clip: 1.0
+
+calibration:
+  method: temperature_scaling
+  val_split_for_calib: 0.5

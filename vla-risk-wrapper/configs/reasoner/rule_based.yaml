@@ -1,0 +1,4 @@
+name: rule_based
+re_grasp_z_threshold: 0.05
+re_approach_progress_threshold: 0.01
+request_help_risk_threshold: 0.85

@@ -1,0 +1,17 @@
+id: AssemblingKits-v1
+obs_mode: rgb+depth+segmentation
+control_mode: pd_ee_delta_pose
+robot: panda
+max_episode_steps: 200
+horizon_H: 30
+
+randomization:
+  strength: medium
+  object_pose_xy_std: 0.04
+  object_pose_yaw_std: 0.3
+  lighting_jitter: 0.3
+  distractor_count: 0
+  camera_pose_jitter: 0.02
+
+reward_mode: sparse
+render_mode: null

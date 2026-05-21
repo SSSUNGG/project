@@ -1,0 +1,21 @@
+defaults:
+  - env: peg_insertion
+  - policy: octo
+  - detector: mlp_hybrid
+  - reasoner: rule_based
+  - experiment: phase1_baseline
+  - _self_
+
+project_root: /content/drive/MyDrive/vla-risk-wrapper
+seed: 42
+device: cuda
+
+logging:
+  level: INFO
+  console: true
+  file: true
+  drive_sync_every_n_episodes: 5
+
+hardware:
+  precision: bf16
+  use_8bit: false

@@ -1,0 +1,14 @@
+name: phase2_collect_data
+
+tasks:
+  - peg_insertion
+  - assembling_kits
+
+collect:
+  n_episodes_per_task: 1000
+  randomization_strength: medium
+  drive_sync_every_n_episodes: 5
+
+output:
+  step_parquet_dir: ${project_root}/data/steps
+  meta_parquet_dir: ${project_root}/data/meta

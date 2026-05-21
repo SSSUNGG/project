@@ -1,0 +1,16 @@
+name: octo
+hf_id: rail-berkeley/octo-base
+action_space: ee_delta_pose_7d
+freeze_backbone: true
+
+lora:
+  enabled: false
+
+quantization:
+  enabled: false
+  bits: 8
+
+hidden_state:
+  layer: -1
+  pooling: mean
+  cache: true

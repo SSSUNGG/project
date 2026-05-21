@@ -1,0 +1,26 @@
+name: phase3_wrapper_eval
+
+conditions:
+  - id: C1_baseline
+    wrapper: none
+  - id: C2_always_reasoning
+    wrapper: always
+  - id: C3_risk_gated
+    wrapper: risk_gated
+    tau_sweep: [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
+
+tasks:
+  - peg_insertion
+  - assembling_kits
+  - pick_single_ycb
+
+eval:
+  n_seeds: 5
+  n_episodes_per_seed: 100
+  same_seed_across_conditions: true
+  bootstrap_n: 1000
+  confidence_level: 0.95
+
+logging:
+  per_step: true
+  per_episode: true

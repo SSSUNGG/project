@@ -1,0 +1,14 @@
+name: phase2_train_detector
+
+tasks:
+  - peg_insertion
+  - assembling_kits
+
+data:
+  step_parquet_dir: ${project_root}/data/steps
+  meta_parquet_dir: ${project_root}/data/meta
+  split_ratios: [0.7, 0.15, 0.15]
+
+output:
+  checkpoint_dir: ${project_root}/checkpoints
+  metrics_path: ${project_root}/results/phase2_metrics.json

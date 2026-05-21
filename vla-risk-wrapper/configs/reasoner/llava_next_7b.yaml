@@ -1,0 +1,5 @@
+name: llava_next_7b
+hf_id: llava-hf/llava-v1.6-mistral-7b-hf
+max_new_tokens: 128
+temperature: 0.0
+do_sample: false

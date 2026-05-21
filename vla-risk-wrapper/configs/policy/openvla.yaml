@@ -1,0 +1,20 @@
+name: openvla
+hf_id: openvla/openvla-7b
+action_space: ee_delta_pose_7d
+freeze_backbone: true
+
+lora:
+  enabled: true
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  target_modules: [q_proj, v_proj, o_proj]
+
+quantization:
+  enabled: true
+  bits: 8
+
+hidden_state:
+  layer: -1
+  pooling: mean
+  cache: true
