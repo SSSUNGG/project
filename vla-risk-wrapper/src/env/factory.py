@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import gymnasium as gym
+import mani_skill.envs  # registers all ManiSkill environments with gymnasium
 from omegaconf import DictConfig
 
 from src.env.randomization import apply_randomization
