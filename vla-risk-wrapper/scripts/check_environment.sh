@@ -61,19 +61,6 @@ else
     ALL_OK=false
 fi
 
-echo ""
-
-# 5. HuggingFace token
-echo "5. Hugging Face token"
-if [ -n "$HF_TOKEN" ]; then
-    echo "   $PASS HF_TOKEN is set"
-elif [ -n "$HUGGING_FACE_HUB_TOKEN" ]; then
-    echo "   $PASS HUGGING_FACE_HUB_TOKEN is set"
-else
-    echo "   $FAIL HF_TOKEN not set"
-    echo "      (export HF_TOKEN=hf_...)"
-    ALL_OK=false
-fi
 
 echo ""
 echo "==="
