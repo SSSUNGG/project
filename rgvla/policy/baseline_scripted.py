@@ -2,39 +2,48 @@ from __future__ import annotations
 import numpy as np
 from typing import Optional
 
+# pd_ee_delta_pose 스케일: action=1.0 → ~10cm 이동
+# (ManiSkill3 Panda pd_ee_delta_pose 컨트롤러 기본값)
+_POS_SCALE = 0.1   # 1.0 action = 10cm
+
+# 호버 / 파지 높이 상수
+_HOVER    = 0.15   # 물체 위 15cm에서 접근
+_GRASP_Z  = 0.015  # 물체 중심 위 1.5cm에서 닫기 (cube 반지름 ≈ 2cm)
+_LIFT_H   = 0.20   # 파지 후 20cm 들어올림
+_ABOVE_GOAL = 0.08 # 목표 위 8cm → 내려놓기
+
 
 class ScriptedBaseline:
     """
-    간단한 FSM 베이스라인 (frozen — 수정/재학습 금지).
+    FSM 베이스라인 (frozen — 수정/재학습 금지).
 
     Phase: approach_above → descend → grasp → lift → move_to_goal → place → release → done
 
-    이 정책은 완벽하지 않으며 randomization 수준에 따라
-    PickCube 40~70%, PickSingleYCB 30~60% 성공률이 목표다.
-    Wrapper의 효과를 측정하려면 baseline이 적당히 실패해야 한다.
+    obs['extra']['tcp_to_obj_pos'] = obj_pos - tcp_pos  (relative, 직접 사용)
+    obs['extra']['obj_to_goal_pos'] = goal_pos - obj_pos (relative, 직접 사용)
+
+    action[:3] = np.clip(delta / _POS_SCALE, -1, 1)
+      → delta < 10cm 면 1 step에 도달, 더 멀면 최고속도로 접근
     """
 
-    # phase별 최대 step 수 (안전망)
-    _MAX_STEPS = {
-        "approach_above": 50,
-        "descend":        35,
-        "grasp":          15,
-        "lift":           35,
-        "move_to_goal":   50,
-        "place":          25,
-        "release":        10,
-        "done":           999,
+    # phase별 최대 step 수 (안전망: 이 안에 목표 못 도달하면 강제 전환)
+    _MAX = {
+        "approach_above": 15,
+        "descend":        12,
+        "grasp":          12,
+        "lift":           12,
+        "move_to_goal":   20,
+        "place":          10,
+        "release":         8,
+        "done":          999,
     }
-    _PHASES = list(_MAX_STEPS.keys())
+    _PHASES = list(_MAX.keys())
 
     def __init__(self, task: str, cfg: dict | None = None):
         self.task = task
-        self.cfg = cfg or {}
         self._phase = "approach_above"
         self._phase_step = 0
-        self._lift_start_z: float = 0.0
-        self._gripper_open_val = 1.0   # 열기
-        self._gripper_close_val = -1.0  # 닫기
+        self._lift_start_z = 0.0
 
     def reset(self, obs) -> None:
         self._phase = "approach_above"
@@ -42,73 +51,81 @@ class ScriptedBaseline:
         self._lift_start_z = 0.0
 
     def act(self, obs) -> np.ndarray:
-        """obs dict → action (7,)."""
-        tcp_pos = self._get_tcp_pos(obs)
-        obj_pos = self._get_obj_pos(obs)
-        goal_pos = self._get_goal_pos(obs)
+        extra = obs["extra"]
+
+        # obs 구조 확인 결과 사용:
+        #   tcp_to_obj_pos = obj_pos - tcp_pos
+        #   obj_to_goal_pos = goal_pos - obj_pos
+        tcp_to_obj  = self._np(extra["tcp_to_obj_pos"])   # (3,)
+        obj_to_goal = self._np(extra["obj_to_goal_pos"])  # (3,)
+        tcp_pos     = self._np(extra["tcp_pose"])[:3]     # (3,)
+        is_grasped  = bool(self._np(extra.get("is_grasped", [0]))[0])
 
         action = np.zeros(7, dtype=np.float32)
-        action[6] = self._gripper_open_val  # 기본: 열기
+        action[6] = 1.0  # 기본: gripper open
+
+        grasp_z = _GRASP_Z + (0.01 if "YCB" in self.task else 0.0)
 
         if self._phase == "approach_above":
-            target = obj_pos + np.array([0.0, 0.0, 0.15])
-            delta = target - tcp_pos
-            action[:3] = np.clip(delta * 4.0, -0.08, 0.08)
-            action[6] = self._gripper_open_val
-            if np.linalg.norm(delta) < 0.025 or self._phase_step >= self._MAX_STEPS["approach_above"]:
-                self._next_phase()
+            # TCP → (obj_x, obj_y, obj_z + HOVER)
+            # delta_to_target = tcp_to_obj + [0, 0, HOVER]
+            delta = tcp_to_obj + np.array([0., 0., _HOVER])
+            action[:3] = np.clip(delta / _POS_SCALE, -1., 1.)
+            action[6] = 1.0
+            if np.linalg.norm(delta) < 0.025 or self._phase_step >= self._MAX["approach_above"]:
+                self._next()
 
         elif self._phase == "descend":
-            # object 위 약 1.5cm 지점으로 내려감
-            grasp_offset = self._grasp_height_offset()
-            target = obj_pos + np.array([0.0, 0.0, grasp_offset])
-            delta = target - tcp_pos
-            action[:3] = np.clip(delta * 4.0, -0.05, 0.05)
-            action[6] = self._gripper_open_val
-            if np.linalg.norm(delta) < 0.020 or self._phase_step >= self._MAX_STEPS["descend"]:
-                self._next_phase()
+            # TCP → (obj_x, obj_y, obj_z + grasp_z)
+            delta = tcp_to_obj + np.array([0., 0., grasp_z])
+            action[:3] = np.clip(delta / _POS_SCALE, -1., 1.)
+            action[6] = 1.0
+            if np.linalg.norm(delta) < 0.018 or self._phase_step >= self._MAX["descend"]:
+                self._lift_start_z = tcp_pos[2]
+                self._next()
 
         elif self._phase == "grasp":
             action[:3] = np.zeros(3)
-            action[6] = self._gripper_close_val
-            if self._phase_step >= self._MAX_STEPS["grasp"]:
+            action[6] = -1.0  # close
+            if is_grasped or self._phase_step >= self._MAX["grasp"]:
                 self._lift_start_z = tcp_pos[2]
-                self._next_phase()
+                self._next()
 
         elif self._phase == "lift":
-            target_z = self._lift_start_z + 0.18
-            target = np.array([tcp_pos[0], tcp_pos[1], target_z])
-            delta = target - tcp_pos
-            action[:3] = np.clip(delta * 4.0, -0.05, 0.05)
-            action[6] = self._gripper_close_val
-            if tcp_pos[2] >= target_z - 0.02 or self._phase_step >= self._MAX_STEPS["lift"]:
-                self._next_phase()
+            # 수직으로 들어올리기
+            target_z = self._lift_start_z + _LIFT_H
+            dz = target_z - tcp_pos[2]
+            action[:3] = np.clip(np.array([0., 0., dz]) / _POS_SCALE, -1., 1.)
+            action[6] = -1.0
+            if dz < 0.025 or self._phase_step >= self._MAX["lift"]:
+                self._next()
 
         elif self._phase == "move_to_goal":
-            target = goal_pos + np.array([0.0, 0.0, 0.08])
-            delta = target - tcp_pos
-            action[:3] = np.clip(delta * 4.0, -0.08, 0.08)
-            action[6] = self._gripper_close_val
-            if np.linalg.norm(delta) < 0.025 or self._phase_step >= self._MAX_STEPS["move_to_goal"]:
-                self._next_phase()
+            # TCP → (goal_x, goal_y, goal_z + ABOVE_GOAL)
+            # tcp_to_obj + obj_to_goal = tcp_to_goal
+            tcp_to_goal = tcp_to_obj + obj_to_goal
+            delta = tcp_to_goal + np.array([0., 0., _ABOVE_GOAL])
+            action[:3] = np.clip(delta / _POS_SCALE, -1., 1.)
+            action[6] = -1.0
+            if np.linalg.norm(delta) < 0.030 or self._phase_step >= self._MAX["move_to_goal"]:
+                self._next()
 
         elif self._phase == "place":
-            target = goal_pos + np.array([0.0, 0.0, 0.01])
-            delta = target - tcp_pos
-            action[:3] = np.clip(delta * 4.0, -0.04, 0.04)
-            action[6] = self._gripper_close_val
-            if np.linalg.norm(delta) < 0.015 or self._phase_step >= self._MAX_STEPS["place"]:
-                self._next_phase()
+            # 천천히 내려놓기
+            tcp_to_goal = tcp_to_obj + obj_to_goal
+            delta = tcp_to_goal + np.array([0., 0., 0.01])
+            action[:3] = np.clip(delta / _POS_SCALE, -1., 1.)
+            action[6] = -1.0
+            if np.linalg.norm(delta) < 0.015 or self._phase_step >= self._MAX["place"]:
+                self._next()
 
         elif self._phase == "release":
             action[:3] = np.zeros(3)
-            action[6] = self._gripper_open_val
-            if self._phase_step >= self._MAX_STEPS["release"]:
-                self._next_phase()
+            action[6] = 1.0  # open
+            if self._phase_step >= self._MAX["release"]:
+                self._next()
 
-        elif self._phase == "done":
-            action[:3] = np.zeros(3)
-            action[6] = self._gripper_open_val
+        # done: 아무것도 안 함
 
         self._phase_step += 1
         return action
@@ -116,34 +133,14 @@ class ScriptedBaseline:
     def last_hidden(self) -> Optional[np.ndarray]:
         return None  # Medium-A
 
-    # ─── 내부 유틸 ────────────────────────────────────────────
-    def _next_phase(self):
+    def _next(self):
         idx = self._PHASES.index(self._phase)
         if idx + 1 < len(self._PHASES):
             self._phase = self._PHASES[idx + 1]
         self._phase_step = 0
 
-    def _grasp_height_offset(self) -> float:
-        """task에 따른 파지 높이 조정."""
-        if "YCB" in self.task:
-            return 0.02   # YCB 물체는 크기 다양
-        return 0.015      # 기본 (cube)
-
     @staticmethod
-    def _to_np(x) -> np.ndarray:
+    def _np(x) -> np.ndarray:
         if hasattr(x, "numpy"):
             x = x.numpy()
         return np.asarray(x, dtype=np.float32).reshape(-1)
-
-    def _get_tcp_pos(self, obs) -> np.ndarray:
-        return self._to_np(obs["extra"]["tcp_pose"])[:3]
-
-    def _get_obj_pos(self, obs) -> np.ndarray:
-        extra = obs.get("extra", {})
-        for key in ("obj_pose", "cube_pose", "object_pose"):
-            if key in extra:
-                return self._to_np(extra[key])[:3]
-        raise KeyError(f"obj_pose 키를 찾지 못함. extra keys: {list(extra.keys())}")
-
-    def _get_goal_pos(self, obs) -> np.ndarray:
-        return self._to_np(obs["extra"]["goal_pos"])[:3]

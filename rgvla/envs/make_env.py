@@ -23,6 +23,14 @@ RANDOMIZATION_PRESETS = {
 }
 
 
+MAX_EPISODE_STEPS = {
+    "PickCube-v1":        200,
+    "StackCube-v1":       300,
+    "PickSingleYCB-v1":   250,
+    "PegInsertionSide-v1": 400,
+}
+
+
 def make_env(
     task: str,
     seed: int = 0,
@@ -35,12 +43,13 @@ def make_env(
 
     randomization = randomization or RANDOMIZATION_PRESETS["eval"]
 
-    # sim_backend는 ManiSkill3가 auto-detect (GPU 있으면 GPU, 없으면 CPU)
+    # max_episode_steps 명시: ManiSkill3 기본값(50)은 너무 짧음
     env = gym.make(
         task,
         obs_mode=obs_mode,
         control_mode="pd_ee_delta_pose",
         num_envs=num_envs,
+        max_episode_steps=MAX_EPISODE_STEPS.get(task, 200),
     )
     return RGEnvWrapper(env, randomization)
 
