@@ -1,0 +1,10 @@
+python>=3.10
+mani_skill
+torch
+numpy
+pandas
+pyarrow
+scikit-learn
+matplotlib
+gymnasium
+pyyaml
