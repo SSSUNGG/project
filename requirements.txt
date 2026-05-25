@@ -8,3 +8,6 @@ scikit-learn
 matplotlib
 gymnasium
 pyyaml
+imageio
+imageio-ffmpeg
+Pillow
